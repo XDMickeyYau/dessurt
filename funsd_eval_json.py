@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import argparse
+import numpy as np
 import torch
 from model import *
 from logger import Logger
