@@ -1,0 +1,8 @@
+scikit-image
+transformers
+timm
+einops
+editdistance
+datasets
+zss
+matplotlib
