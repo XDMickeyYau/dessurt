@@ -20,7 +20,7 @@ from skimage import future
 def main(resume,config,img_path,addToConfig=None,gpu=False,do_pad=None,scale=None,do_saliency=False,default_task_token=None,dont_output_mask=False,write="./"):
     np.random.seed(1234)
     torch.manual_seed(1234)
-    no_mask_qs = ['fli:','fna:','re~','l~','v~', 'mm~','mk>','natural_q~','json>','json~','linkdown-text~', 'read_block>']
+    no_mask_qs = ['fli:','fna:','re~','l~','v~', 'mm~','mk>','natural_q~','json>','json~','linkdown-text~', 'read_block>','ner_full>']
     remove_qs = ['rm>','mlm>','mm~','mk>']
     if resume is not None:
         checkpoint = torch.load(resume, map_location=lambda storage, location: storage)
@@ -211,16 +211,13 @@ def main(resume,config,img_path,addToConfig=None,gpu=False,do_pad=None,scale=Non
         if gpu:
             img = img.cuda()
 
-        question = 'json>'
+        question = default_task_token
 
         if question.startswith('[nr]'):
             run=False
             question=question[4:]
         else:
             run=True
-
-        if default_task_token is not None and '~' not in question and '>' not in question:
-            question = default_task_token+question
 
         needs_input_mask=True
         for q in no_mask_qs:
@@ -301,7 +298,7 @@ if __name__ == '__main__':
                         help='Run to get saliency map')
     parser.add_argument('-D', '--dont_output_mask', default=False, action='store_const', const=True,
                         help='Don\'t show output mask')
-    parser.add_argument('-t', '--task_token', default=None, type=str,
+    parser.add_argument('-t', '--task_token', default="json>", type=str,
                         help='set a default task token that gets apppended if no other task token is in query')
     parser.add_argument('-w', '--write', default="./", type=str,
                         help='path to write all jsons to')
