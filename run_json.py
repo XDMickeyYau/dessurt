@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import argparse
+import pathlib
 import torch
 from model import *
 from model.loss import *
@@ -164,116 +165,131 @@ def main(resume,config,img_path,addToConfig=None,gpu=False,do_pad=None,scale=Non
         else:
             loop=False
 
-        img = img_f.imread(img_path,False)
-        #import pdb;pdb.set_trace()
-        if img.max()<=1:
-            img*=255
-
-        if 'rescale_to_crop_size_first' in config['data_loader'] and  config['data_loader']['rescale_to_crop_size_first']:
-            scale_height = do_pad[0]/img.shape[0]
-            scale_width = do_pad[1]/img.shape[1]
-            choosen_scale = min(scale_height, scale_width)
-            if scale:
-                new_scale=scale*choosen_scale
-            else:
-                new_scale=choosen_scale
+        if os.path.isdir(img_path):
+            img_paths = [str(f) for f in pathlib.Path(img_path).iterdir()]
         else:
-            new_scale=scale
+            img_paths = [img_path]
 
-
-
-
-        if new_scale:
-            img = img_f.resize(img,fx=new_scale,fy=new_scale)
-        
-        if do_pad and (img.shape[0]!=do_pad[0] or img.shape[1]!=do_pad[1]):
-            diff_x = do_pad[1]-img.shape[1]
-            diff_y = do_pad[0]-img.shape[0]
-            p_img = np.zeros(do_pad,dtype=img.dtype)
-            if diff_x>=0 and diff_y>=0:
-                p_img[diff_y//2:p_img.shape[0]-(diff_y//2 + diff_y%2),diff_x//2:p_img.shape[1]-(diff_x//2 + diff_x%2)] = img
-            elif diff_x<0 and diff_y>=0:
-                p_img[diff_y//2:p_img.shape[0]-(diff_y//2 + diff_y%2),:] = img[:,(-diff_x)//2:-((-diff_x)//2 + (-diff_x)%2)]
-            elif diff_x>=0 and diff_y<0:
-                p_img[:,diff_x//2:p_img.shape[1]-(diff_x//2 + diff_x%2)] = img[(-diff_y)//2:-((-diff_y)//2 + (-diff_y)%2),:]
-            else:
-                p_img = img[(-diff_y)//2:-((-diff_y)//2 + (-diff_y)%2),(-diff_x)//2:-((-diff_x)//2 + (-diff_x)%2)]
-            img=p_img
-
-        if len(img.shape)==2:
-            img=img[...,None] #add color channel
-        np_img=img
-        img = img.transpose([2,0,1])[None,...]
-        img = img.astype(np.float32)
-        img = torch.from_numpy(img)
-        img = 1.0 - img / 128.0
-
-        if gpu:
-            img = img.cuda()
-
-        question = default_task_token
-
-        if question.startswith('[nr]'):
-            run=False
-            question=question[4:]
-        else:
-            run=True
-
-        needs_input_mask=True
-        for q in no_mask_qs:
-            if question.startswith(q):
-                needs_input_mask=False
-                break
-        needs_remove_mask=False
-        for q in remove_qs:
-            if question.startswith(q):
-                needs_remove_mask=True
-                break
-        if needs_input_mask:
-            # get input mask
-            print('Select input mask')
-            mask = future.manual_lasso_segmentation(np_img)
-            if mask.sum()==0:
-                mask = np.zeros_like(mask)
-            mask = torch.from_numpy(mask)[None,None,...].float().to(img.device) #add batch and color channel
-        else:
-            mask = torch.zeros_like(img)
-        if needs_remove_mask:
-            # get remove mask
-            print('Select remove mask')
-            rm_mask = future.manual_lasso_segmentation(np_img)
-            rm_mask = torch.from_numpy(rm_mask)[None,None,...].to(img.device) #add batch and color channel
-            #mask[rm_mask]=-1
-            mask = torch.where(rm_mask==1,torch.FloatTensor(*mask.size()).fill_(-1).to(img.device),mask)
-            rm_img = img*(1-rm_mask)
-        else:
-            rm_img = img
-        in_img = torch.cat((rm_img,mask.to(img.device)),dim=1)
-        
-        if do_saliency:
-            answer,pred_mask = s_model.saliency(in_img,[[question]])
-        else:
-            answer,pred_mask = model(in_img,[[question]],RUN=run)
-            #pred_a, target_a, answer, pred_mask = model(in_img,[[question]],[['number']])
-        #print('Answer: {}      max mask={}'.format(answer,pred_mask.max()))
-        print('Answer: {}'.format(answer))
-        with open(os.path.join(write,'answer.json'), 'w') as f:
-            output = json.loads(answer[:-1])
-            json.dump(output,f,indent=4)
-        #show_mask = torch.cat((pred_mask,pred_mask>0.5).float()
-        if not dont_output_mask:
-            draw_img = 0.5*(1-img)
-            threshed = torch.where(pred_mask>0.5,1-draw_img,draw_img)
-            #high_score = 2*(pred_mask-0.5)/pred_mask.max()
+        for img_path in img_paths:
+            print("LOADING",img_path)
+            img = img_f.imread(img_path,False)
             #import pdb;pdb.set_trace()
-            #high = pred_mask/pred_mask.max()
-            #high = torch.where(pred_mask>0.5,high_score,draw_img)
-            show_im = torch.cat((draw_img,draw_img*(1-pred_mask),threshed),dim=1)
-            #show_im = torch.cat((1-high,draw_img-pred_mask,threshed),dim=1)
-            #show_im = torch.cat((high,draw_img,draw_img),dim=1)
-            show_im = (show_im[0]*255).cpu().permute(1,2,0).numpy().astype(np.uint8)
-            img_f.imshow('x',show_im)
-            img_f.show()
+            if img.max()<=1:
+                img*=255
+
+            if 'rescale_to_crop_size_first' in config['data_loader'] and  config['data_loader']['rescale_to_crop_size_first']:
+                scale_height = do_pad[0]/img.shape[0]
+                scale_width = do_pad[1]/img.shape[1]
+                choosen_scale = min(scale_height, scale_width)
+                if scale:
+                    new_scale=scale*choosen_scale
+                else:
+                    new_scale=choosen_scale
+            else:
+                new_scale=scale
+
+
+
+
+            if new_scale:
+                img = img_f.resize(img,fx=new_scale,fy=new_scale)
+            
+            if do_pad and (img.shape[0]!=do_pad[0] or img.shape[1]!=do_pad[1]):
+                diff_x = do_pad[1]-img.shape[1]
+                diff_y = do_pad[0]-img.shape[0]
+                p_img = np.zeros(do_pad,dtype=img.dtype)
+                if diff_x>=0 and diff_y>=0:
+                    p_img[diff_y//2:p_img.shape[0]-(diff_y//2 + diff_y%2),diff_x//2:p_img.shape[1]-(diff_x//2 + diff_x%2)] = img
+                elif diff_x<0 and diff_y>=0:
+                    p_img[diff_y//2:p_img.shape[0]-(diff_y//2 + diff_y%2),:] = img[:,(-diff_x)//2:-((-diff_x)//2 + (-diff_x)%2)]
+                elif diff_x>=0 and diff_y<0:
+                    p_img[:,diff_x//2:p_img.shape[1]-(diff_x//2 + diff_x%2)] = img[(-diff_y)//2:-((-diff_y)//2 + (-diff_y)%2),:]
+                else:
+                    p_img = img[(-diff_y)//2:-((-diff_y)//2 + (-diff_y)%2),(-diff_x)//2:-((-diff_x)//2 + (-diff_x)%2)]
+                img=p_img
+
+            if len(img.shape)==2:
+                img=img[...,None] #add color channel
+            np_img=img
+            img = img.transpose([2,0,1])[None,...]
+            img = img.astype(np.float32)
+            img = torch.from_numpy(img)
+            img = 1.0 - img / 128.0
+
+            if gpu:
+                img = img.cuda()
+
+            question = default_task_token
+
+            if question.startswith('[nr]'):
+                run=False
+                question=question[4:]
+            else:
+                run=True
+
+            needs_input_mask=True
+            for q in no_mask_qs:
+                if question.startswith(q):
+                    needs_input_mask=False
+                    break
+            needs_remove_mask=False
+            for q in remove_qs:
+                if question.startswith(q):
+                    needs_remove_mask=True
+                    break
+            if needs_input_mask:
+                # get input mask
+                print('Select input mask')
+                mask = future.manual_lasso_segmentation(np_img)
+                if mask.sum()==0:
+                    mask = np.zeros_like(mask)
+                mask = torch.from_numpy(mask)[None,None,...].float().to(img.device) #add batch and color channel
+            else:
+                mask = torch.zeros_like(img)
+            if needs_remove_mask:
+                # get remove mask
+                print('Select remove mask')
+                rm_mask = future.manual_lasso_segmentation(np_img)
+                rm_mask = torch.from_numpy(rm_mask)[None,None,...].to(img.device) #add batch and color channel
+                #mask[rm_mask]=-1
+                mask = torch.where(rm_mask==1,torch.FloatTensor(*mask.size()).fill_(-1).to(img.device),mask)
+                rm_img = img*(1-rm_mask)
+            else:
+                rm_img = img
+            in_img = torch.cat((rm_img,mask.to(img.device)),dim=1)
+        
+            if do_saliency:
+                answer,pred_mask = s_model.saliency(in_img,[[question]])
+            else:
+                answer,pred_mask = model(in_img,[[question]],RUN=run)
+                #pred_a, target_a, answer, pred_mask = model(in_img,[[question]],[['number']])
+            #print('Answer: {}      max mask={}'.format(answer,pred_mask.max()))
+            print('Answer: {}'.format(answer))
+            os.makedirs(write, exist_ok = True)
+            filename = os.path.basename(img_path).split(".")[0]
+            try:
+                output = json.loads(answer[:-1])
+                with open(os.path.join(write,f'{filename}.json'), 'w') as f:  
+                    print("WRITING JSON")
+                    json.dump(output,f,indent=4)
+            except:
+                with open(os.path.join(write,f'{filename}.txt'), 'w') as f:
+                    print("WRITING TXT")
+                    f.write(answer)           
+            #show_mask = torch.cat((pred_mask,pred_mask>0.5).float()
+            if not dont_output_mask:
+                draw_img = 0.5*(1-img)
+                threshed = torch.where(pred_mask>0.5,1-draw_img,draw_img)
+                #high_score = 2*(pred_mask-0.5)/pred_mask.max()
+                #import pdb;pdb.set_trace()
+                #high = pred_mask/pred_mask.max()
+                #high = torch.where(pred_mask>0.5,high_score,draw_img)
+                show_im = torch.cat((draw_img,draw_img*(1-pred_mask),threshed),dim=1)
+                #show_im = torch.cat((1-high,draw_img-pred_mask,threshed),dim=1)
+                #show_im = torch.cat((high,draw_img,draw_img),dim=1)
+                show_im = (show_im[0]*255).cpu().permute(1,2,0).numpy().astype(np.uint8)
+                img_f.imshow('x',show_im)
+                img_f.show()
 
 
 if __name__ == '__main__':
