@@ -3,6 +3,7 @@ import argparse
 import xml.etree.ElementTree as ET
 from PIL import Image
 import os
+import tqdm
 
 def parse():
     parser = argparse.ArgumentParser(description='Crop IAM dataset')
@@ -10,7 +11,7 @@ def parse():
     parser.add_argument("--image_folder", type=str, default="./", help="A positional integer argument")
     parser.add_argument("--annotation_out_folder", type=str, default="./", help="A positional integer argument")
     parser.add_argument("--image_out_folder", type=str, default="./", help="A positional integer argument")
-    parser.add_argument("--max", type=int, default=10, help="A positional integer argument")
+    parser.add_argument("--max", type=int, help="A positional integer argument")
 
     args = parser.parse_args()
     return args
@@ -24,11 +25,12 @@ def main():
     image_folder = args.image_folder
     annotation_out_folder = args.annotation_out_folder
     image_out_folder = args.image_out_folder
-    amt = args.max
 
     # %%
     files = os.listdir(annotation_folder)
-    for file in files[:amt]:
+    amt = args.max if args.max is int else len(files)
+    print("PROCESSING", amt, "DOCUMENTS")
+    for file in tqdm(files[:amt]):
         try:
             file = file.split(".")[0]
 
