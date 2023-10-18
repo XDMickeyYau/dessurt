@@ -73,9 +73,20 @@ It will prompt you for the image path (if not provided) and for the queries. You
 * Parse to JSON, starting from: `json~JSON": "to start from"}`
 * Link down/up (just replace "down" with "up"):  `linkdown-both~text of element` or `linkdown-box~` or `linkdown-text~text of element`
 
+### run_command.py (NEW)
+
+This allows running Dessurt for a single image / a batch of images in a folder.
+
+Usage: `python run_command.py -c CHECKPOINT.pth [-i image/path(default ask for path)] [-g gpu#] [-a add=or,change=things=in,config=v] [-t TASK_TOKEN] [-w output path]`
+
+The following task tokens are supported:
+* Read page: `read_block>`, you can also use `read_block0>` if you want to provide the highlight
+* Natural language question: `natural_q~question text`
+* Parse to JSON: `json>`
+
 ### qa_eval.py
 
-For evaluating Dessurt on all datasets other than FUNSD and NAF.
+For evaluating Dessurt on all datasets other than FUNSD, NAF, and IAM.
 
 Usage: `python qa_eval.py -c CHECKPOINT.pth -d DATASETNAME [-g GPU#]  [-T (do test set)] 
 
@@ -95,6 +106,17 @@ Usage:
 `python funsd_eval_json.py -c the/checkpoint.pth [-T (do testset)] [-g GPU#] [-w the/output/predictions.json] [-E entityMatchThresh-default0.6] [-L linkMatchThresh-default0.6] [-b doBeamSearchWithThisNumberBeams]`  (the same usage for `naf_eval_json.py`)
 
 `python get_GAnTED_for_Dessurt.py -p the/predictions.json -d FUNSD/NAF (dataset name) [-T (do testset)] [-P doParallelThisManyThreads] [-2 (run twice)] [-s (shuffle order before)]
+
+### Evaluating on IAM (NEW)
+
+To evaluate the IAM datasets we use three scripts.
+
+We first crop the IAM images to retian only the handwritten part and extract the ground truth text from raw xml annotation files. 
+`python dataset_processing.py  [--annotation_folder raw xml annotation folder] [--image_folder raw image folder] [--annotation_out_folder processed txt annotation folder] [--image_out_folder cropped image folder]`
+
+After that, we run the model using `run_command.py` to generate output in txt files.
+
+Finally, we run `parsing_eval.ipynb` to calculate the WER and CER.
 
 
 ### graph.py
